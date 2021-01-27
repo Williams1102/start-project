@@ -1,10 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UsersDoc } from './schema';
 import { createUserDto, updateUserDto, user, viewUserDto } from './dto';
 import { MailService } from '../../shared/mailer/mailer.service';
 import { mailDto } from '../../shared/mailer/mail.dto';
+import { compareSync, genSaltSync, hashSync } from 'bcrypt';
+import { checkStrongPw } from './services/checkPassword';
+import { handlePassword } from './services/handlePassword';
+
+const SALT = parseInt(process.env.SALT);
+const isEmail = /^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
 
 @Injectable()
 export class UsersService {
@@ -23,8 +29,7 @@ export class UsersService {
       return xx;
     } catch (e) {
       console.log(e.message);
-
-      return null;
+      throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -34,22 +39,30 @@ export class UsersService {
       if (id) findData._id = id;
       if (email) findData.email = email;
 
-      const info = await this.userModel.findOne(findData);
-
-      return info ? new user(info) : { error: 'email is not exist!' };
+      const info = await this.userModel.findOne(findData).lean();
+      if (!info) throw { message: 'email is not exist !!!' };
+      return info;
     } catch (e) {
       console.log(e.message);
-      return { error: e.message };
+      throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
     }
   }
 
   async addUser(body: createUserDto): Promise<any> {
     try {
-      const isEmail = /^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
       if (!isEmail.test(body.email))
-        return { message: 'You must input email !' };
+        throw { message: 'You must input email !' };
+
+      const { error } = checkStrongPw(body.password);
+      if (error) throw { message: error };
+
       if (body.rePassword !== body.password)
-        return { message: 'Password is not match' };
+        throw { message: 'Password is not match' };
+
+      const hash = await hashSync(body.password, SALT);
+      body.password = hash;
+      // console.log(body);
+
       const create = await this.userModel.create(body);
       const linkActive: mailDto = {
         toEmail: body.email,
@@ -60,7 +73,7 @@ export class UsersService {
       return create;
     } catch (e) {
       console.log(e.message);
-      return { error: 'error !' };
+      throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -71,23 +84,33 @@ export class UsersService {
       return result;
     } catch (e) {
       console.log(e.message);
-      return { error: 'error !' };
+      throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
     }
   }
 
   async updateInfoUser(id: string, body: updateUserDto): Promise<any> {
+    // update info method: password, birthday, interest,....
     try {
+      if (body.email) throw { message: 'email is not change !!!' };
+      // before: find user update
+      const userCurrent = await this.userModel.findOne({ _id: id });
+      const userObj = userCurrent.toObject();
+
+      //handle: password data
       if (body.password) {
-        return body.password === body.rePassword
-          ? this.userModel.findOneAndUpdate({ _id: id }, body, { new: true })
-          : { message: 'Password is not matched !' };
+        body.password = await handlePassword(body, new user(userObj));
       }
-      const updated = await this.userModel.findOneAndUpdate({ _id: id }, body, {
-        new: true,
-      });
-      return updated;
+
+      // after: updating in db
+      await userCurrent.updateOne(body, { new: true }).lean();
+
+      delete body.password;
+
+      return new user(body);
     } catch (e) {
-      return { error: e.message };
+      console.log(e.message);
+
+      throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -96,7 +119,9 @@ export class UsersService {
       const bin = await this.userModel.findOneAndDelete({ _id: id });
       return bin;
     } catch (e) {
-      return { error: e.message };
+      console.log(e.message);
+
+      throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
     }
   }
 }

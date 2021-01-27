@@ -20,8 +20,8 @@ export class User {
   @Prop()
   interest: [string];
 
-  @Prop({ enum: ['admin', 'user'] })
-  roles: string;
+  @Prop({ enum: ['admin', 'user'], default: 'user', required: true })
+  role: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

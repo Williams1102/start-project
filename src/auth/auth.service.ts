@@ -1,15 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { compareSync } from 'bcrypt';
 import { user } from 'src/common/users/dto';
 import { UsersService } from '../common/users/users.service';
+import { authDto } from './auth.dto';
 
 @Injectable()
 export class AuthService {
   constructor(private users: UsersService, private jwt: JwtService) {}
 
   async encodeJWT(info: any) {
-    const payload = { email: info.email, active: info.isActive };
-    console.log(payload);
+    const payload = { ...info };
+    // console.log(payload);
 
     return {
       accessToken: this.jwt.sign(payload),
@@ -18,13 +20,18 @@ export class AuthService {
 
   async findEmailAndLogin(email: string, pass: string): Promise<any> {
     try {
-      const info = await this.users.findOneUser(null, email);
+      const info = new user(await this.users.findOneUser(null, email));
 
-      if (info && info.password === pass) {
-        const { password, ...result } = info;
+      const isCompare = await compareSync(pass, info.password);
+      if (!isCompare)
+        throw new HttpException(
+          'Password is incorrect',
+          HttpStatus.BAD_REQUEST,
+        );
 
-        return result;
-      } else return info.error ? info : { error: 'Password is incorrect' };
+      const { password, ...result } = info;
+      // console.log(result);
+      return result;
     } catch (e) {
       console.log(e.message);
       return {

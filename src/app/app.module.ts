@@ -12,7 +12,6 @@ import { UsersModule } from '../common/users/users.module';
 import { MailModule } from '../shared/mailer/mailer.module';
 import { AuthModule } from '../auth/auth.module';
 
-
 @Module({
   imports: [
     // set config
