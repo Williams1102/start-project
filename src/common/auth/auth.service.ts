@@ -1,8 +1,8 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { compareSync } from 'bcrypt';
-import { user } from 'src/common/users/dto';
-import { UsersService } from '../common/users/users.service';
+import { user } from 'src/app/users/dto';
+import { UsersService } from '../../app/users/users.service';
 import { authDto } from './auth.dto';
 
 @Injectable()
@@ -10,8 +10,10 @@ export class AuthService {
   constructor(private users: UsersService, private jwt: JwtService) {}
 
   async encodeJWT(info: any) {
+    console.log(info);
+
     const payload = { ...info };
-    // console.log(payload);
+    console.log(payload);
 
     return {
       accessToken: this.jwt.sign(payload),
